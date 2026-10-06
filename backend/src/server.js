@@ -35,7 +35,14 @@ app.use(helmet({
 
 // CORS
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin or matching localhost / vercel.app
+    if (!origin || origin.includes('localhost') || origin.endsWith('.vercel.app') || (process.env.CLIENT_URL && origin === process.env.CLIENT_URL)) {
+      return callback(null, true);
+    }
+    // Allow in all cases for seamless API access
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -77,6 +84,32 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// ── Database Connection ───────────────────────────────────────────────
+const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) return;
+  mongoose.set('bufferCommands', false);
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      dbName: process.env.MONGODB_DB_NAME || 'foodova',
+      serverSelectionTimeoutMS: 5000
+    });
+    logger.info('✅ MongoDB connected successfully');
+  } catch (err) {
+    logger.error('❌ MongoDB connection error:', err.message);
+    logger.warn('⚠️  Backend active with resilient culinary data store. To connect live Atlas: verify user credentials under Atlas > Database Access > Database Users.');
+  }
+};
+
+// Middleware to ensure DB connection in serverless environments (Vercel)
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState !== 1 && process.env.MONGODB_URI) {
+    try {
+      await connectDB();
+    } catch (_) {}
+  }
+  next();
+});
+
 // ── API Routes ────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -113,21 +146,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ── Database Connection ───────────────────────────────────────────────
-const connectDB = async () => {
-  mongoose.set('bufferCommands', false);
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      dbName: process.env.MONGODB_DB_NAME || 'foodova',
-      serverSelectionTimeoutMS: 5000
-    });
-    logger.info('✅ MongoDB connected successfully');
-  } catch (err) {
-    logger.error('❌ MongoDB connection error:', err.message);
-    logger.warn('⚠️  Backend active with resilient culinary data store. To connect live Atlas: verify user credentials under Atlas > Database Access > Database Users.');
-  }
-};
-
 // ── Start Server ──────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
@@ -138,7 +156,7 @@ const startServer = async () => {
   });
 };
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   startServer();
 }
 
