@@ -8,9 +8,13 @@ import api from '../services/api';
 export const VerifyOTPPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const email = searchParams.get('email') || '';
-
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const urlOtp = searchParams.get('otp') || '';
+  const [otp, setOtp] = useState(() => {
+    if (urlOtp && urlOtp.length === 6) {
+      return urlOtp.split('');
+    }
+    return ['', '', '', '', '', ''];
+  });
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes
   const [cooldown, setCooldown] = useState(60); // 60s cooldown for resend

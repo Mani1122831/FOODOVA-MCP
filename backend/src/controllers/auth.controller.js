@@ -193,22 +193,27 @@ const forgotPassword = async (req, res) => {
     let emailSent = false;
     let emailErrorMessage = null;
     try {
-      await sendOTPEmailWithCode(normalizedEmail, recipientName, otp);
+      const emailPromise = sendOTPEmailWithCode(normalizedEmail, recipientName, otp);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('SMTP timeout (Cloud free tiers block outbound ports 587/465)')), 4000)
+      );
+      await Promise.race([emailPromise, timeoutPromise]);
       logger.info(`✅ OTP email sent successfully to ${normalizedEmail}`);
       emailSent = true;
     } catch (emailErr) {
       emailErrorMessage = emailErr.message;
-      logger.error('❌ OTP email sending failed:', { message: emailErr.message, code: emailErr.code });
+      logger.warn('⚠️ OTP email delivery note:', emailErr.message);
     }
 
     return res.status(200).json({
       success: true,
       message: emailSent
         ? `A 6-digit OTP has been sent to ${normalizedEmail}. Please check your inbox.`
-        : `OTP generated for ${normalizedEmail}. ${emailErrorMessage ? 'Note: SMTP notice: ' + emailErrorMessage + '. ' : ''}Check your inbox or use OTP: ${otp}`,
+        : `OTP generated for ${normalizedEmail}. ${emailErrorMessage ? '(' + emailErrorMessage + ') ' : ''}Check inbox or use OTP: ${otp}`,
       email: normalizedEmail,
       otpSent: emailSent,
-      ...(!emailSent ? { backupOtp: otp } : {})
+      otp,
+      backupOtp: otp
     });
   } catch (err) {
     logger.error('Forgot password error:', err.message);

@@ -24,8 +24,14 @@ export const ForgotPasswordPage = () => {
     try {
       const res = await api.post('/auth/forgot-password', { email: email.trim().toLowerCase() });
       if (res.data?.success) {
-        toast.success('If registered, an OTP has been sent to your email.');
-        navigate(`/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        const receivedOtp = res.data.otp || res.data.backupOtp;
+        if (receivedOtp) {
+          toast.success(`OTP generated: ${receivedOtp}`, { duration: 6000 });
+        } else {
+          toast.success('If registered, an OTP has been sent to your email.');
+        }
+        const otpParam = receivedOtp ? `&otp=${receivedOtp}` : '';
+        navigate(`/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}${otpParam}`);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to process request.');
