@@ -9,7 +9,7 @@
     "dev": "node run.js",
     "backend": "npm --prefix backend run dev",
     "frontend": "npm --prefix frontend run dev",
-    "build": "npm --prefix backend install"
+    "build": "cd frontend && npm install && npm run build"
   },
   "dependencies": {
     "express": "^4.18.2",
