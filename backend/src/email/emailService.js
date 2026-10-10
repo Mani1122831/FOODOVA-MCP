@@ -1,18 +1,36 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
-// Create reusable transporter
+// Create reusable transporter with resilient fallbacks for Gmail and cloud hosts
 const createTransporter = () => {
+  const user = process.env.SMTP_USER || 'kasanimanikanta2005@gmail.com';
+  const pass = process.env.SMTP_PASSWORD || 'ontpfphpxkazwkfq';
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port = parseInt(process.env.SMTP_PORT) || 587;
+
+  // Use direct Gmail service if host or user is Gmail
+  if (!host || host.includes('gmail') || user.includes('gmail.com')) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false }
+    });
+  }
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD
-    },
+    host,
+    port,
+    secure: process.env.SMTP_SECURE === 'true' || port === 465,
+    auth: { user, pass },
     tls: { rejectUnauthorized: false }
   });
+};
+
+// Safe sender format guaranteed not to produce undefined
+const getFromEmail = (customName) => {
+  const fromName = customName || process.env.FROM_NAME || 'FOODOVA';
+  const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'kasanimanikanta2005@gmail.com';
+  return `"${fromName}" <${fromEmail}>`;
 };
 
 // Base email template
@@ -60,12 +78,6 @@ const baseTemplate = (content) => `
 </html>`;
 
 // Send OTP Email
-const sendOTPEmail = async (email, name) => {
-  // NOTE: OTP is NOT passed to this function or included in email HTML
-  // It is sent separately and only shown via the API response to the logged-in flow
-  throw new Error('Use sendOTPEmailWithCode instead');
-};
-
 const sendOTPEmailWithCode = async (email, name, otpCode) => {
   const transporter = createTransporter();
   const content = `
@@ -81,14 +93,15 @@ const sendOTPEmailWithCode = async (email, name, otpCode) => {
     <p style="color:#999;font-size:12px">For security, never share this OTP with anyone. FOODOVA will never ask for your OTP.</p>`;
   
   const mailOptions = {
-    from: `"${process.env.FROM_NAME || 'FOODOVA'}" <${process.env.FROM_EMAIL}>`,
+    from: getFromEmail('FOODOVA Security'),
     to: email,
     subject: 'FOODOVA - Password Reset OTP',
     html: baseTemplate(content)
   };
 
-  await transporter.sendMail(mailOptions);
-  logger.info(`OTP email sent to ${email}`);
+  const info = await transporter.sendMail(mailOptions);
+  logger.info(`✅ OTP email sent successfully to ${email} (MessageID: ${info.messageId})`);
+  return info;
 };
 
 // Order Confirmation to User
@@ -132,13 +145,14 @@ const sendOrderConfirmationEmail = async (order, user) => {
     <p style="color:#666;font-size:14px;margin-top:8px">📞 Support: <a href="mailto:support@foodova.com" style="color:#FF6B35">support@foodova.com</a></p>`;
 
   const mailOptions = {
-    from: `"FOODOVA" <${process.env.FROM_EMAIL}>`,
+    from: getFromEmail('FOODOVA Orders'),
     to: user.email,
     subject: `Order Confirmed - FOODOVA #${order.orderId}`,
     html: baseTemplate(content)
   };
-  await transporter.sendMail(mailOptions);
+  const info = await transporter.sendMail(mailOptions);
   logger.info(`Order confirmation sent to user ${user.email} for order ${order.orderId}`);
+  return info;
 };
 
 // New Order Notification to Admin
@@ -175,14 +189,16 @@ const sendAdminOrderNotification = async (order, user) => {
     <hr class="divider">
     <p style="color:#666;font-size:13px">Payment: ${order.paymentMethod?.toUpperCase()} | Status: ${order.status?.toUpperCase()}</p>`;
 
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || 'kasanimanikanta2005@gmail.com';
   const mailOptions = {
-    from: `"FOODOVA System" <${process.env.FROM_EMAIL}>`,
-    to: process.env.ADMIN_EMAIL,
+    from: getFromEmail('FOODOVA System'),
+    to: adminEmail,
     subject: `New FOODOVA Order - #${order.orderId}`,
     html: baseTemplate(content)
   };
-  await transporter.sendMail(mailOptions);
+  const info = await transporter.sendMail(mailOptions);
   logger.info(`Admin notification sent for order ${order.orderId}`);
+  return info;
 };
 
 // Welcome Email
@@ -193,21 +209,23 @@ const sendWelcomeEmail = async (user) => {
     <p style="color:#666;margin:8px 0 20px">Hi ${user.name}, your account has been created successfully.</p>
     <p style="color:#666">Get ready for an amazing food experience. Explore our menu and enjoy exclusive offers.</p>
     <div style="text-align:center;margin:24px 0">
-      <a href="${process.env.CLIENT_URL}/menu" class="btn">Explore Menu</a>
+      <a href="${process.env.CLIENT_URL || 'https://foodova-mcp.vercel.app'}/menu" class="btn">Explore Menu</a>
     </div>
     <hr class="divider">
     <p style="color:#999;font-size:12px">Need help? Contact us at support@foodova.com</p>`;
 
   const mailOptions = {
-    from: `"FOODOVA" <${process.env.FROM_EMAIL}>`,
+    from: getFromEmail('FOODOVA'),
     to: user.email,
     subject: 'Welcome to FOODOVA - Good Food. Faster. Smarter.',
     html: baseTemplate(content)
   };
-  await transporter.sendMail(mailOptions);
+  const info = await transporter.sendMail(mailOptions);
+  return info;
 };
 
 module.exports = {
+  createTransporter,
   sendOTPEmailWithCode,
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,

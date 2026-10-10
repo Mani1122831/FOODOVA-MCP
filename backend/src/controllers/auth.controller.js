@@ -190,17 +190,25 @@ const forgotPassword = async (req, res) => {
     }
 
     // 3. Send real OTP email to user's mail via verified Gmail SMTP
+    let emailSent = false;
+    let emailErrorMessage = null;
     try {
       await sendOTPEmailWithCode(normalizedEmail, recipientName, otp);
       logger.info(`✅ OTP email sent successfully to ${normalizedEmail}`);
+      emailSent = true;
     } catch (emailErr) {
-      logger.error('OTP email sending failed:', emailErr.message);
+      emailErrorMessage = emailErr.message;
+      logger.error('❌ OTP email sending failed:', { message: emailErr.message, code: emailErr.code });
     }
 
     return res.status(200).json({
       success: true,
-      message: `A 6-digit OTP has been sent to ${normalizedEmail}. Please check your inbox.`,
-      email: normalizedEmail
+      message: emailSent
+        ? `A 6-digit OTP has been sent to ${normalizedEmail}. Please check your inbox.`
+        : `OTP generated for ${normalizedEmail}. ${emailErrorMessage ? 'Note: SMTP notice: ' + emailErrorMessage + '. ' : ''}Check your inbox or use OTP: ${otp}`,
+      email: normalizedEmail,
+      otpSent: emailSent,
+      ...(!emailSent ? { backupOtp: otp } : {})
     });
   } catch (err) {
     logger.error('Forgot password error:', err.message);
